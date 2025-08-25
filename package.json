@@ -10,7 +10,7 @@
     "dev:all": "docker-compose up -d && npx prisma migrate dev && npx prisma db seed && npm run dev",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "worker": "node -e \"console.log('Worker not implemented yet')\"",
+    "worker": "tsx scripts/outbox-worker.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

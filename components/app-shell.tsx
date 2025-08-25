@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Bell, Book, Home, LogOut, Moon, Sun, User2 } from "lucide-react"
+import { Bell, Book, Home, LogOut, Moon, Sun } from "lucide-react"
 import { toggleTheme } from "./providers/theme-provider"
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import toast, { Toaster } from "react-hot-toast"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export function AppShell({
   children,
@@ -19,39 +20,65 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [unread, setUnread] = useState(0)
   const [openNotif, setOpenNotif] = useState(false)
-  const [notifications, setNotifications] = useState<{ id: string; title: string; body: string; read: boolean }[]>([])
+  const qc = useQueryClient()
 
-  // SSE (optional): connect if backend exists; ignore errors otherwise.
+  // Data: unread count and latest notifications
+  const unreadQuery = useQuery({
+    queryKey: ['notifications','unread-count'],
+    queryFn: async () => {
+      const r = await fetch('/api/notifications/unread-count')
+      if (!r.ok) throw new Error('Failed')
+      return r.json() as Promise<{ count: number }>
+    },
+    refetchInterval: 30_000,
+  })
+
+  const listQuery = useQuery({
+    queryKey: ['notifications','list'],
+    queryFn: async () => {
+      const r = await fetch('/api/notifications?limit=20')
+      if (!r.ok) throw new Error('Failed')
+      return r.json() as Promise<{ items: { id:string; title:string; body:string; bookId:string; createdAt:string; readAt:string|null }[] }>
+    },
+    staleTime: 10_000,
+  })
+
+  const unread = unreadQuery.data?.count || 0
+
+  // SSE: connect to authorized stream
   useEffect(() => {
     let es: EventSource | null = null
     try {
-      es = new EventSource("/api/events")
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.type === 'notification.created') {
-            setNotifications((prev) => [{ id: msg.id || crypto.randomUUID(), title: msg.title, body: msg.body, read: false }, ...prev])
-          }
-          // For book status changes, we don't handle here; dashboard panels invalidate queries locally.
-        } catch {}
-      }
-      es.onerror = () => {
-        es?.close()
-      }
+      es = new EventSource('/api/events/stream')
+      es.addEventListener('notification.created', () => {
+        qc.invalidateQueries({ queryKey: ['notifications','unread-count'] })
+        qc.invalidateQueries({ queryKey: ['notifications','list'] })
+      })
+      es.addEventListener('books.statusChanged', () => {
+        // Invalidate role queues in dashboard; kept generic (let dashboard handle specific query keys)
+        qc.invalidateQueries({ queryKey: ['books'] })
+      })
+      es.onerror = () => { es?.close() }
     } catch {
       // no-op
     }
     return () => es?.close()
-  }, [])
+  }, [qc])
 
-  useEffect(() => {
-    setUnread(notifications.filter((n) => !n.read).length)
-  }, [notifications])
-
-  function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+  async function markAllRead() {
+    // Optimistic: set unread to 0 by updating cache
+    const prev = unreadQuery.data
+    unreadQuery.setData?.({ count: 0 } as any)
+    try {
+      const r = await fetch('/api/notifications/read-all', { method: 'POST' })
+      if (!r.ok) throw new Error('Failed')
+      qc.invalidateQueries({ queryKey: ['notifications','list'] })
+      qc.invalidateQueries({ queryKey: ['notifications','unread-count'] })
+    } catch {
+      if (prev) unreadQuery.setData?.(prev as any)
+      toast.error('Failed to mark as read')
+    }
   }
 
   const nav = useMemo(
@@ -103,10 +130,10 @@ export function AppShell({
                   <button className="text-xs underline" onClick={markAllRead}>Mark all read</button>
                 </div>
                 <div className="max-h-80 overflow-auto divide-y divide-neutral-200 dark:divide-neutral-800">
-                  {notifications.length === 0 ? (
+                  {(!listQuery.data || listQuery.data.items.length === 0) ? (
                     <div className="p-3 text-sm text-neutral-500">No notifications</div>
-                  ) : notifications.map((n) => (
-                    <div key={n.id} className={cn("p-3 text-sm", !n.read && "bg-blue-50/50 dark:bg-blue-950/20")}>{n.title}<div className="text-xs text-neutral-500">{n.body}</div></div>
+                  ) : listQuery.data.items.map((n) => (
+                    <div key={n.id} className={cn("p-3 text-sm", !n.readAt && "bg-blue-50/50 dark:bg-blue-950/20")}>{n.title}<div className="text-xs text-neutral-500">{n.body}</div></div>
                   ))}
                 </div>
               </div>

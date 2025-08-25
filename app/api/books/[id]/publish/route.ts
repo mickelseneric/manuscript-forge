@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireUser, assertRole } from '@/lib/api-auth'
+import { publishToUser } from '@/lib/sse'
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const result = await requireUser()
@@ -23,10 +24,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       if (update.count === 0) {
         throw new Error('conflict')
       }
+      const eventId = crypto.randomUUID()
       await tx.bookEventOutbox.create({
         data: {
           type: 'BookPublished',
-          payload: { bookId: id, actorId: user.id, from: 'ready', to: 'published' },
+          payload: { eventId, bookId: id, actorId: user.id, from: 'ready', to: 'published', occurredAt: new Date().toISOString() },
           occurredAt: new Date(),
         },
       })
@@ -35,5 +37,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Conflict' }, { status: 409 })
   }
 
+  // Notify Author that their book published
+  // Find authorId to target the correct user
+  const book = await prisma.book.findUnique({ where: { id }, select: { authorId: true } })
+  if (book) publishToUser(book.authorId, 'books.statusChanged', { bookId: id, from: 'ready', to: 'published' })
   return NextResponse.json({ ok: true })
 }

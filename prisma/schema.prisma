@@ -87,12 +87,14 @@ model Notification {
   createdAt DateTime @default(now())
   seenAt    DateTime?
   readAt    DateTime?
+  eventId   String   @db.Text // idempotency key for the originating event
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@index([userId, readAt, createdAt])
+  @@unique([userId, eventId])
 }
 
 model BookEventOutbox {

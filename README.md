@@ -1,4 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Manuscript Forge
+
+This repository contains a Next.js (App Router) application with Tailwind, Prisma (PostgreSQL), and JWT-based auth.
+
+## Outbox-based notifications
+
+We use the transactional outbox pattern to deliver in-app notifications and realtime updates via Server-Sent Events (SSE).
+
+Flow:
+- Book state transitions write a row to `BookEventOutbox` within the same DB transaction.
+- A background worker polls for unprocessed rows, fans out `Notification` rows to the correct recipients, publishes SSE events, and marks each outbox row processed.
+
+Who gets notified:
+- `BookSubmitted` → all Editors
+- `BookMarkedReady` → all Publishers
+- `BookPublished` → the Author of the book
+
+Idempotency:
+- Each outbox payload carries an `eventId`. Notifications have a unique composite `(userId, eventId)` so retries won’t duplicate rows.
+
+## Running locally
+
+1) Environment
+- Copy `.env.example` to `.env` and ensure `DATABASE_URL` and `JWT_SECRET` are set.
+
+2) Database
+- Start Postgres: `npm run db:up`
+- Apply migrations: `npm run db:migrate`
+- Seed demo data: `npm run db:seed`
+
+3) App + Worker
+- Run the dev server: `npm run dev`
+- In another terminal, start the outbox worker: `npm run worker`
+
+## Realtime (SSE)
+- Open a single connection to `/api/events/stream` after auth. The server authenticates the stream using the session cookie.
+- Events:
+  - `notification.created` (id, title, bookId, createdAt)
+  - `books.statusChanged` (bookId, from, to)
+
+The AppShell wires the bell badge and inbox to the REST APIs:
+- `GET /api/notifications?unread=true&limit=20&cursor=<createdAt,id>`
+- `GET /api/notifications/unread-count`
+- `POST /api/notifications/read-all`
+
+Security & scoping:
+- All notifications APIs and SSE stream use the current cookie session and are scoped to the authenticated user. APIs return JSON (401/403/409) and never redirect.
 
 ## Getting Started
 

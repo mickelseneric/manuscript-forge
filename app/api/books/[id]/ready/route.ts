@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireUser, assertRole } from '@/lib/api-auth'
+import { publishToRole } from '@/lib/sse'
 
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const result = await requireUser()
@@ -23,10 +24,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       if (update.count === 0) {
         throw new Error('conflict')
       }
+      const eventId = crypto.randomUUID()
       await tx.bookEventOutbox.create({
         data: {
-          type: 'BookReady',
-          payload: { bookId: id, actorId: user.id, from: 'editing', to: 'ready' },
+          type: 'BookMarkedReady',
+          payload: { eventId, bookId: id, actorId: user.id, from: 'editing', to: 'ready', occurredAt: new Date().toISOString() },
           occurredAt: new Date(),
         },
       })
@@ -35,5 +37,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: 'Conflict' }, { status: 409 })
   }
 
+  // Notify Publishers that a book moved to ready
+  publishToRole('Publisher', 'books.statusChanged', { bookId: id, from: 'editing', to: 'ready' })
   return NextResponse.json({ ok: true })
 }
