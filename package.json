@@ -7,12 +7,14 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "dev:all": "npm run db:up && next dev --turbopack",
-    "db:up": "docker compose up -d db",
+    "dev:all": "docker-compose up -d && npx prisma migrate dev && npx prisma db seed && npm run dev",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "worker": "node -e \"console.log('Worker not implemented yet')\"",
     "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
     "react": "19.1.0",
