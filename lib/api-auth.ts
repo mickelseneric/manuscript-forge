@@ -24,3 +24,9 @@ export async function requireUser(): Promise<RequireUserResult> {
     return { ok: false, status: 401 }
   }
 }
+
+export function assertRole(user: { role: string }, roles: string[] | string): { ok: true } | { ok: false; status: 403 } {
+  const allowed = Array.isArray(roles) ? roles : [roles]
+  if (allowed.includes(user.role)) return { ok: true }
+  return { ok: false, status: 403 }
+}
