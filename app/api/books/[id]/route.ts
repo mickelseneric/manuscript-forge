@@ -78,3 +78,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   })
   return NextResponse.json(book)
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const result = await requireUser()
+  if (!result.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { user } = result
+  if (!assertRole(user, 'Author').ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const id = params.id
+  // Atomic conditional delete: only author's own draft
+  const res = await prisma.book.deleteMany({
+    where: { id, authorId: user.id, status: 'draft' },
+  })
+  if (res.count === 0) return NextResponse.json({ error: 'Conflict' }, { status: 409 })
+  return NextResponse.json({ ok: true })
+}

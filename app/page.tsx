@@ -1,15 +1,15 @@
 import type { Metadata } from 'next'
+import prisma from '@/lib/prisma'
 import { Header } from '@/components/landing/Header'
 import { Hero } from '@/components/landing/Hero'
 import { LogoStrip } from '@/components/landing/LogoStrip'
 import { FeatureCards } from '@/components/landing/FeatureCards'
 import { HowItWorks } from '@/components/landing/HowItWorks'
-import { BooksCarousel } from '@/components/landing/BooksCarousel'
+import { BooksCarousel, type FeaturedBook } from '@/components/landing/BooksCarousel'
 import { AuthorSpotlight } from '@/components/landing/AuthorSpotlight'
 import { Testimonials } from '@/components/landing/Testimonials'
-import { StatsAndCTA } from '@/components/landing/StatsAndCTA'
+import { Stats } from '@/components/landing/Stats'
 import { FAQ } from '@/components/landing/FAQ'
-import { Footer } from '@/components/landing/Footer'
 
 export const metadata: Metadata = {
   title: 'Manuscript Forge — Publish better books',
@@ -27,7 +27,18 @@ export const metadata: Metadata = {
   },
 }
 
-export default function Home() {
+async function getFeaturedBooks(): Promise<FeaturedBook[]> {
+  const books = await prisma.book.findMany({
+    where: { status: 'published' },
+    orderBy: { updatedAt: 'desc' },
+    take: 12,
+    select: { id: true, title: true, status: true, author: { select: { name: true } } },
+  })
+  return books.map((b) => ({ id: b.id, title: b.title, status: b.status as FeaturedBook['status'], author: b.author.name }))
+}
+
+export default async function Home() {
+  const featured = await getFeaturedBooks()
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       <Header />
@@ -36,13 +47,12 @@ export default function Home() {
         <LogoStrip />
         <FeatureCards />
         <HowItWorks />
-        <BooksCarousel />
+        <BooksCarousel books={featured} />
         <AuthorSpotlight />
         <Testimonials />
-        <StatsAndCTA />
+        <Stats />
         <div id="faq"><FAQ /></div>
       </main>
-      <Footer />
       {/* Organization JSON-LD */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
         '@context': 'https://schema.org',

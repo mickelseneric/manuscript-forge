@@ -34,6 +34,24 @@ export function AuthorPanel() {
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
 
+  // Edit modal state
+  const [editing, setEditing] = useState<{ id: string; title: string; content: string } | null>(null)
+  const [loadingEdit, setLoadingEdit] = useState(false)
+
+  function openEdit(id: string) {
+    setLoadingEdit(true)
+    fetchJSON<any>(`/api/books/${id}`)
+      .then((b) => {
+        setEditing({ id: b.id, title: b.title, content: b.content })
+      })
+      .catch((e: any) => {
+        if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+        else if (e.status === 404) toast.error("Draft not found")
+        else toast.error("Failed to load draft")
+      })
+      .finally(() => setLoadingEdit(false))
+  }
+
   const createDraft = useMutation({
     mutationFn: (data: { title: string; content: string }) => fetchJSON<any>("/api/books", { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: (book) => {
@@ -68,6 +86,26 @@ export function AuthorPanel() {
     }
   })
 
+  const deleteDraft = useMutation({
+    mutationFn: (id: string) => fetchJSON(`/api/books/${id}`, { method: 'DELETE' }),
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["books", "draft"] })
+      const prev = qc.getQueryData<any[]>(["books", "draft"]) || []
+      qc.setQueryData<any[]>(["books", "draft"], prev.filter((b) => b.id !== id))
+      return { prev }
+    },
+    onError: (e: any, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["books", "draft"], ctx.prev)
+      if (e.status === 409) toast.error("Cannot delete: only your own drafts can be deleted")
+      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+      else if (e.status === 403) toast.error("Forbidden")
+      else toast.error("Failed to delete")
+    },
+    onSuccess: () => {
+      toast.success("Draft deleted")
+    }
+  })
+
   return (
     <Card>
       <CardHeader>
@@ -90,7 +128,8 @@ export function AuthorPanel() {
                   <div className="text-xs text-neutral-500">Updated {new Date(b.updatedAt).toLocaleString()}</div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => window.location.href = `/dashboard?tab=edit-${b.id}`}>Edit</Button>
+                  <Button variant="secondary" onClick={() => openEdit(b.id)}>Edit</Button>
+                  <Button variant="secondary" onClick={() => { if (confirm('Delete this draft? This cannot be undone.')) deleteDraft.mutate(b.id) }}>Delete</Button>
                   <Button onClick={() => submitDraft.mutate(b.id)}>Submit</Button>
                 </div>
               </li>
@@ -122,14 +161,91 @@ export function AuthorPanel() {
             </div>
           </div>
         )}
+
+        {/* Edit Draft Modal */}
+        {(editing || loadingEdit) && (
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => !loadingEdit && setEditing(null)} />
+            <div className="relative w-full max-w-md rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+              <div className="text-lg font-semibold mb-3">Edit Draft</div>
+              {loadingEdit ? (
+                <div className="text-sm text-neutral-600 dark:text-neutral-300">Loading…</div>
+              ) : editing ? (
+                <EditForm editing={editing} onClose={() => setEditing(null)} />
+              ) : null}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+function EditForm({ editing, onClose }: { editing: { id: string; title: string; content: string }; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [title, setTitle] = useState(editing.title)
+  const [content, setContent] = useState(editing.content)
+
+  const updateDraft = useMutation({
+    mutationFn: (p: { id: string; title: string; content: string }) =>
+      fetchJSON(`/api/books/${p.id}`, { method: 'PUT', body: JSON.stringify({ title: p.title, content: p.content }) }),
+    onSuccess: (book: any) => {
+      toast.success('Draft updated')
+      qc.setQueryData<any[]>(['books', 'draft'], (prev) => (prev ? prev.map((b) => (b.id === book.id ? { ...b, title: book.title, updatedAt: book.updatedAt } : b)) : prev))
+      onClose()
+    },
+    onError: (e: any) => {
+      if (e.status === 409) toast.error('Conflict: can only edit your own draft in draft status')
+      else if (e.status === 401) window.location.href = '/auth/login?next=/dashboard'
+      else if (e.status === 403) toast.error('Forbidden')
+      else toast.error('Failed to update')
+    },
+  })
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label htmlFor="edit-title">Title</Label>
+        <Input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Draft title" />
+      </div>
+      <div>
+        <Label htmlFor="edit-content">Content</Label>
+        <textarea
+          id="edit-content"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="w-full h-32 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 p-2 text-sm"
+          placeholder="Write something…"
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose} disabled={updateDraft.isPending}>Cancel</Button>
+        <Button onClick={() => updateDraft.mutate({ id: editing.id, title, content })} disabled={!title || !content || updateDraft.isPending}>Save</Button>
+      </div>
+    </div>
   )
 }
 
 export function EditorPanel() {
   const qc = useQueryClient()
   const editing = useBooks('editing')
+
+  // View modal state
+  const [viewing, setViewing] = useState<{ id: string; title: string; content: string } | null>(null)
+  const [loadingView, setLoadingView] = useState(false)
+
+  function openView(id: string) {
+    setLoadingView(true)
+    fetchJSON<any>(`/api/books/${id}`)
+      .then((b) => setViewing({ id: b.id, title: b.title, content: b.content }))
+      .catch((e: any) => {
+        if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+        else if (e.status === 404) toast.error("Not found")
+        else toast.error("Failed to load")
+      })
+      .finally(() => setLoadingView(false))
+  }
+
   const markReady = useMutation({
     mutationFn: (id: string) => fetchJSON(`/api/books/${id}/ready`, { method: 'POST' }),
     onMutate: async (id: string) => {
@@ -148,6 +264,29 @@ export function EditorPanel() {
     onSuccess: () => {
       toast.success("Marked ready")
       qc.invalidateQueries({ queryKey: ["books", "ready"] })
+      setViewing(null)
+    }
+  })
+
+  const changesRequired = useMutation({
+    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/changes-required`, { method: 'POST' }),
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["books", "editing"] })
+      const prev = qc.getQueryData<any[]>(["books", "editing"]) || []
+      qc.setQueryData<any[]>(["books", "editing"], prev.filter((b) => b.id !== id))
+      return { prev }
+    },
+    onError: (e: any, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["books", "editing"], ctx.prev)
+      if (e.status === 409) toast.error("Conflict: cannot move to draft")
+      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+      else if (e.status === 403) toast.error("Forbidden")
+      else toast.error("Failed")
+    },
+    onSuccess: () => {
+      toast.success("Changes requested — returned to draft")
+      qc.invalidateQueries({ queryKey: ["books", "draft"] })
+      setViewing(null)
     }
   })
 
@@ -159,12 +298,36 @@ export function EditorPanel() {
           <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
             {editing.data.map((b) => (
               <li key={b.id} className="py-3 flex items-center justify-between">
-                <div className="font-medium">{b.title}</div>
-                <Button onClick={() => markReady.mutate(b.id)}>Mark Ready</Button>
+                <button className="font-medium text-left hover:underline" onClick={() => openView(b.id)}>{b.title}</button>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => openView(b.id)}>Review</Button>
+                  <Button onClick={() => markReady.mutate(b.id)}>Mark Ready</Button>
+                </div>
               </li>
             ))}
           </ul>
         ) : <div className="text-sm text-neutral-500">No submissions.</div>)}
+
+        {(viewing || loadingView) && (
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => !loadingView && setViewing(null)} />
+            <div className="relative w-full max-w-2xl rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+              <div className="text-lg font-semibold mb-3">{viewing ? viewing.title : 'Loading…'}</div>
+              {loadingView ? (
+                <div className="text-sm text-neutral-600 dark:text-neutral-300">Loading…</div>
+              ) : viewing ? (
+                <div className="space-y-4">
+                  <pre className="whitespace-pre-wrap text-sm bg-neutral-50 dark:bg-neutral-950 p-3 rounded border border-neutral-200 dark:border-neutral-800 max-h-80 overflow-auto">{viewing.content}</pre>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
+                    <Button variant="secondary" onClick={() => changesRequired.mutate(viewing.id)} disabled={changesRequired.isPending}>Changes Required</Button>
+                    <Button onClick={() => markReady.mutate(viewing.id)} disabled={markReady.isPending}>Submit to Publisher</Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -173,7 +336,22 @@ export function EditorPanel() {
 export function PublisherPanel() {
   const qc = useQueryClient()
   const ready = useBooks('ready')
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+
+  const [viewing, setViewing] = useState<{ id: string; title: string; content: string } | null>(null)
+  const [loadingView, setLoadingView] = useState(false)
+
+  function openView(id: string) {
+    setLoadingView(true)
+    fetchJSON<any>(`/api/books/${id}`)
+      .then((b) => setViewing({ id: b.id, title: b.title, content: b.content }))
+      .catch((e: any) => {
+        if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+        else if (e.status === 404) toast.error("Not found")
+        else toast.error("Failed to load")
+      })
+      .finally(() => setLoadingView(false))
+  }
+
   const publish = useMutation({
     mutationFn: (id: string) => fetchJSON(`/api/books/${id}/publish`, { method: 'POST' }),
     onMutate: async (id: string) => {
@@ -192,6 +370,29 @@ export function PublisherPanel() {
     onSuccess: () => {
       toast.success("Published")
       qc.invalidateQueries({ queryKey: ["books", "published"] })
+      setViewing(null)
+    }
+  })
+
+  const notReady = useMutation({
+    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/not-ready`, { method: 'POST' }),
+    onMutate: async (id: string) => {
+      await qc.cancelQueries({ queryKey: ["books", "ready"] })
+      const prev = qc.getQueryData<any[]>(["books", "ready"]) || []
+      qc.setQueryData<any[]>(["books", "ready"], prev.filter((b) => b.id !== id))
+      return { prev }
+    },
+    onError: (e: any, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["books", "ready"], ctx.prev)
+      if (e.status === 409) toast.error("Conflict: cannot move back to editing")
+      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
+      else if (e.status === 403) toast.error("Forbidden")
+      else toast.error("Failed")
+    },
+    onSuccess: () => {
+      toast.success("Moved back to editing")
+      qc.invalidateQueries({ queryKey: ["books", "editing"] })
+      setViewing(null)
     }
   })
 
@@ -203,23 +404,33 @@ export function PublisherPanel() {
           <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
             {ready.data.map((b) => (
               <li key={b.id} className="py-3 flex items-center justify-between">
-                <div className="font-medium">{b.title}</div>
-                <Button onClick={() => setConfirmId(b.id)}>Publish</Button>
+                <button className="font-medium text-left hover:underline" onClick={() => openView(b.id)}>{b.title}</button>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => openView(b.id)}>Review</Button>
+                  <Button onClick={() => publish.mutate(b.id)}>Publish</Button>
+                </div>
               </li>
             ))}
           </ul>
         ) : <div className="text-sm text-neutral-500">No items.</div>)}
 
-        {confirmId && (
+        {(viewing || loadingView) && (
           <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmId(null)} />
-            <div className="relative w-full max-w-sm rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-              <div className="font-semibold mb-2">Publish this book?</div>
-              <div className="text-sm text-neutral-600 dark:text-neutral-300 mb-3">Once published, it will appear to readers.</div>
-              <div className="flex justify-end gap-2">
-                <Button variant="secondary" onClick={() => setConfirmId(null)}>Cancel</Button>
-                <Button onClick={() => { const id = confirmId; setConfirmId(null); if (id) publish.mutate(id) }}>Confirm</Button>
-              </div>
+            <div className="absolute inset-0 bg-black/40" onClick={() => !loadingView && setViewing(null)} />
+            <div className="relative w-full max-w-2xl rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
+              <div className="text-lg font-semibold mb-3">{viewing ? viewing.title : 'Loading…'}</div>
+              {loadingView ? (
+                <div className="text-sm text-neutral-600 dark:text-neutral-300">Loading…</div>
+              ) : viewing ? (
+                <div className="space-y-4">
+                  <pre className="whitespace-pre-wrap text-sm bg-neutral-50 dark:bg-neutral-950 p-3 rounded border border-neutral-200 dark:border-neutral-800 max-h-80 overflow-auto">{viewing.content}</pre>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
+                    <Button variant="secondary" onClick={() => notReady.mutate(viewing.id)} disabled={notReady.isPending}>Not Ready</Button>
+                    <Button onClick={() => publish.mutate(viewing.id)} disabled={publish.isPending}>Publish</Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

@@ -32,11 +32,10 @@ export function Header() {
           <a href="#books" className="hover:underline">Books</a>
           <a href="#authors" className="hover:underline">Authors</a>
         </nav>
-        <div className="relative">
+        <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
           <Link href="/auth/login" className="mr-2 text-sm underline decoration-amber-400/60 underline-offset-4 hover:decoration-amber-500">Log in</Link>
-          <Button onMouseEnter={() => setOpen(true)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onMouseLeave={() => setOpen(false)} variant="secondary">Profiles</Button>
           {open && (
-            <div role="menu" className="absolute right-0 mt-2 w-56 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-2">
+            <div role="menu" aria-label="Login quick profiles" className="absolute right-0 top-full w-56 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg p-2">
               {DEMO.map((d) => (
                 <form key={d.email} method="POST" action={`/api/auth/login?next=${encodeURIComponent('/dashboard')}`}>
                   <input type="hidden" name="email" value={d.email} />

@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { featuredBooks } from "./data"
 import { BookCard } from "./BookCard"
 
-export function BooksCarousel() {
+export type FeaturedBook = { id: string; title: string; author: string; status?: "draft"|"editing"|"ready"|"published" }
+
+export function BooksCarousel({ books }: { books: FeaturedBook[] }) {
   const trackRef = useRef<HTMLDivElement | null>(null)
   const [index, setIndex] = useState(0)
 
@@ -21,7 +22,7 @@ export function BooksCarousel() {
     scrollTo(index)
   }, [index])
 
-  const next = () => setIndex((i) => Math.min(i + 1, featuredBooks.length - 1))
+  const next = () => setIndex((i) => Math.min(i + 1, Math.max(books.length - 1, 0)))
   const prev = () => setIndex((i) => Math.max(i - 1, 0))
 
   return (
@@ -40,7 +41,7 @@ export function BooksCarousel() {
             onKeyDown={(e) => { if (e.key === 'ArrowRight') next(); if (e.key === 'ArrowLeft') prev() }}
             className="flex-1 overflow-x-auto scroll-smooth [scroll-snap-type:x_mandatory] gap-4 flex"
           >
-            {featuredBooks.map((b, i) => (
+            {books.map((b) => (
               <div role="listitem" key={b.id} className="min-w-[70%] sm:min-w-[40%] lg:min-w-[22%] [scroll-snap-align:center]">
                 <BookCard title={b.title} author={b.author} status={b.status} />
               </div>
