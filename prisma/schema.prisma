@@ -11,7 +11,94 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Minimal placeholder model to allow generating Prisma Client during scaffolding.
-model Init {
-  id Int @id @default(autoincrement())
+enum UserRole {
+  Author
+  Editor
+  Publisher
+  Reader
+}
+
+enum BookStatus {
+  draft
+  editing
+  ready
+  published
+}
+
+model User {
+  id    String   @id @default(uuid()) @db.Uuid
+  email String   @unique
+  name  String
+  role  UserRole
+
+  // Relations
+  authoredBooks  Book[]        @relation("AuthorBooks")
+  editedBooks    Book[]        @relation("EditorBooks")
+  publishedBooks Book[]        @relation("PublisherBooks")
+  reviews        Review[]
+  notifications  Notification[]
+}
+
+model Book {
+  id          String      @id @default(uuid()) @db.Uuid
+  authorId    String      @db.Uuid
+  title       String
+  content     String      @db.Text
+  status      BookStatus
+  editorId    String?     @db.Uuid
+  publisherId String?     @db.Uuid
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  author   User   @relation("AuthorBooks", fields: [authorId], references: [id], onDelete: Cascade)
+  editor   User?  @relation("EditorBooks", fields: [editorId], references: [id])
+  publisher User? @relation("PublisherBooks", fields: [publisherId], references: [id])
+  reviews  Review[]
+  notifications Notification[]
+
+  @@index([authorId])
+  @@index([editorId])
+  @@index([publisherId])
+}
+
+model Review {
+  id        String   @id @default(uuid()) @db.Uuid
+  bookId    String   @db.Uuid
+  readerId  String   @db.Uuid
+  rating    Int
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  book   Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  reader User @relation(fields: [readerId], references: [id], onDelete: Cascade)
+
+  @@index([bookId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String   @db.Text
+  bookId    String   @db.Uuid
+  title     String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  seenAt    DateTime?
+  readAt    DateTime?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model BookEventOutbox {
+  id          String   @id @default(uuid()) @db.Uuid
+  type        String   @db.Text
+  payload     Json
+  occurredAt  DateTime
+  processedAt DateTime?
 }
