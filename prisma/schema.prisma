@@ -1,0 +1,17 @@
+// Prisma schema for Manuscript Forge
+// Datasource: PostgreSQL via DATABASE_URL
+// Generator: Prisma Client
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Minimal placeholder model to allow generating Prisma Client during scaffolding.
+model Init {
+  id Int @id @default(autoincrement())
+}
