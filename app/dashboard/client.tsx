@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import toast from "react-hot-toast"
+import { useTransitionBook } from "@/components/hooks/use-transition-book"
 
 function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   return fetch(url, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers || {}) } }).then(async (r) => {
@@ -65,26 +66,7 @@ export function AuthorPanel() {
     }
   })
 
-  const submitDraft = useMutation({
-    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/submit`, { method: 'POST' }),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["books", "draft"] })
-      const prev = qc.getQueryData<any[]>(["books", "draft"]) || []
-      qc.setQueryData<any[]>(["books", "draft"], prev.filter((b) => b.id !== id))
-      return { prev }
-    },
-    onError: (e: any, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["books", "draft"], ctx.prev)
-      if (e.status === 409) toast.error("Cannot submit: already submitted or not your draft")
-      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
-      else if (e.status === 403) toast.error("Forbidden")
-      else toast.error("Failed to submit")
-    },
-    onSuccess: () => {
-      toast.success("Submitted for editing")
-      qc.invalidateQueries({ queryKey: ["books", "editing"] })
-    }
-  })
+  const transition = useTransitionBook()
 
   const deleteDraft = useMutation({
     mutationFn: (id: string) => fetchJSON(`/api/books/${id}`, { method: 'DELETE' }),
@@ -130,7 +112,7 @@ export function AuthorPanel() {
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openEdit(b.id)}>Edit</Button>
                   <Button variant="secondary" onClick={() => { if (confirm('Delete this draft? This cannot be undone.')) deleteDraft.mutate(b.id) }}>Delete</Button>
-                  <Button onClick={() => submitDraft.mutate(b.id)}>Submit</Button>
+                  <Button onClick={() => transition.mutate({ id: b.id, action: 'submit', from: 'draft', to: 'editing' })}>Submit</Button>
                 </div>
               </li>
             ))}
@@ -227,6 +209,7 @@ function EditForm({ editing, onClose }: { editing: { id: string; title: string; 
 }
 
 export function EditorPanel() {
+  const transition = useTransitionBook()
   const qc = useQueryClient()
   const editing = useBooks('editing')
 
@@ -246,49 +229,6 @@ export function EditorPanel() {
       .finally(() => setLoadingView(false))
   }
 
-  const markReady = useMutation({
-    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/ready`, { method: 'POST' }),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["books", "editing"] })
-      const prev = qc.getQueryData<any[]>(["books", "editing"]) || []
-      qc.setQueryData<any[]>(["books", "editing"], prev.filter((b) => b.id !== id))
-      return { prev }
-    },
-    onError: (e: any, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["books", "editing"], ctx.prev)
-      if (e.status === 409) toast.error("Conflict: cannot mark ready")
-      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
-      else if (e.status === 403) toast.error("Forbidden")
-      else toast.error("Failed")
-    },
-    onSuccess: () => {
-      toast.success("Marked ready")
-      qc.invalidateQueries({ queryKey: ["books", "ready"] })
-      setViewing(null)
-    }
-  })
-
-  const changesRequired = useMutation({
-    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/changes-required`, { method: 'POST' }),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["books", "editing"] })
-      const prev = qc.getQueryData<any[]>(["books", "editing"]) || []
-      qc.setQueryData<any[]>(["books", "editing"], prev.filter((b) => b.id !== id))
-      return { prev }
-    },
-    onError: (e: any, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["books", "editing"], ctx.prev)
-      if (e.status === 409) toast.error("Conflict: cannot move to draft")
-      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
-      else if (e.status === 403) toast.error("Forbidden")
-      else toast.error("Failed")
-    },
-    onSuccess: () => {
-      toast.success("Changes requested — returned to draft")
-      qc.invalidateQueries({ queryKey: ["books", "draft"] })
-      setViewing(null)
-    }
-  })
 
   return (
     <Card>
@@ -301,7 +241,7 @@ export function EditorPanel() {
                 <button className="font-medium text-left hover:underline" onClick={() => openView(b.id)}>{b.title}</button>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openView(b.id)}>Review</Button>
-                  <Button onClick={() => markReady.mutate(b.id)}>Mark Ready</Button>
+                  <Button onClick={() => transition.mutate({ id: b.id, action: 'ready', from: 'editing', to: 'ready' })}>Mark Ready</Button>
                 </div>
               </li>
             ))}
@@ -320,8 +260,8 @@ export function EditorPanel() {
                   <pre className="whitespace-pre-wrap text-sm bg-neutral-50 dark:bg-neutral-950 p-3 rounded border border-neutral-200 dark:border-neutral-800 max-h-80 overflow-auto">{viewing.content}</pre>
                   <div className="flex justify-end gap-2">
                     <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
-                    <Button variant="secondary" onClick={() => changesRequired.mutate(viewing.id)} disabled={changesRequired.isPending}>Changes Required</Button>
-                    <Button onClick={() => markReady.mutate(viewing.id)} disabled={markReady.isPending}>Submit to Publisher</Button>
+                    <Button variant="secondary" onClick={() => viewing && transition.mutate({ id: viewing.id, action: 'changes-required', from: 'editing', to: 'draft' }, { onSuccess: () => setViewing(null) })}>Changes Required</Button>
+                    <Button onClick={() => viewing && transition.mutate({ id: viewing.id, action: 'ready', from: 'editing', to: 'ready' }, { onSuccess: () => setViewing(null) })}>Submit to Publisher</Button>
                   </div>
                 </div>
               ) : null}
@@ -334,6 +274,7 @@ export function EditorPanel() {
 }
 
 export function PublisherPanel() {
+  const transition = useTransitionBook()
   const qc = useQueryClient()
   const ready = useBooks('ready')
 
@@ -352,49 +293,6 @@ export function PublisherPanel() {
       .finally(() => setLoadingView(false))
   }
 
-  const publish = useMutation({
-    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/publish`, { method: 'POST' }),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["books", "ready"] })
-      const prev = qc.getQueryData<any[]>(["books", "ready"]) || []
-      qc.setQueryData<any[]>(["books", "ready"], prev.filter((b) => b.id !== id))
-      return { prev }
-    },
-    onError: (e: any, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["books", "ready"], ctx.prev)
-      if (e.status === 409) toast.error("Conflict: cannot publish")
-      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
-      else if (e.status === 403) toast.error("Forbidden")
-      else toast.error("Failed")
-    },
-    onSuccess: () => {
-      toast.success("Published")
-      qc.invalidateQueries({ queryKey: ["books", "published"] })
-      setViewing(null)
-    }
-  })
-
-  const notReady = useMutation({
-    mutationFn: (id: string) => fetchJSON(`/api/books/${id}/not-ready`, { method: 'POST' }),
-    onMutate: async (id: string) => {
-      await qc.cancelQueries({ queryKey: ["books", "ready"] })
-      const prev = qc.getQueryData<any[]>(["books", "ready"]) || []
-      qc.setQueryData<any[]>(["books", "ready"], prev.filter((b) => b.id !== id))
-      return { prev }
-    },
-    onError: (e: any, _id, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["books", "ready"], ctx.prev)
-      if (e.status === 409) toast.error("Conflict: cannot move back to editing")
-      else if (e.status === 401) window.location.href = "/auth/login?next=/dashboard"
-      else if (e.status === 403) toast.error("Forbidden")
-      else toast.error("Failed")
-    },
-    onSuccess: () => {
-      toast.success("Moved back to editing")
-      qc.invalidateQueries({ queryKey: ["books", "editing"] })
-      setViewing(null)
-    }
-  })
 
   return (
     <Card>
@@ -407,7 +305,7 @@ export function PublisherPanel() {
                 <button className="font-medium text-left hover:underline" onClick={() => openView(b.id)}>{b.title}</button>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openView(b.id)}>Review</Button>
-                  <Button onClick={() => publish.mutate(b.id)}>Publish</Button>
+                  <Button onClick={() => transition.mutate({ id: b.id, action: 'publish', from: 'ready', to: 'published' })}>Publish</Button>
                 </div>
               </li>
             ))}
@@ -426,8 +324,8 @@ export function PublisherPanel() {
                   <pre className="whitespace-pre-wrap text-sm bg-neutral-50 dark:bg-neutral-950 p-3 rounded border border-neutral-200 dark:border-neutral-800 max-h-80 overflow-auto">{viewing.content}</pre>
                   <div className="flex justify-end gap-2">
                     <Button variant="secondary" onClick={() => setViewing(null)}>Close</Button>
-                    <Button variant="secondary" onClick={() => notReady.mutate(viewing.id)} disabled={notReady.isPending}>Not Ready</Button>
-                    <Button onClick={() => publish.mutate(viewing.id)} disabled={publish.isPending}>Publish</Button>
+                    <Button variant="secondary" onClick={() => viewing && transition.mutate({ id: viewing.id, action: 'not-ready', from: 'ready', to: 'editing' }, { onSuccess: () => setViewing(null) })}>Not Ready</Button>
+                    <Button onClick={() => viewing && transition.mutate({ id: viewing.id, action: 'publish', from: 'ready', to: 'published' }, { onSuccess: () => setViewing(null) })}>Publish</Button>
                   </div>
                 </div>
               ) : null}

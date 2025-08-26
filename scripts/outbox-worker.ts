@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma'
 import { publishToRole, publishToUser } from '@/lib/sse'
+import { TRANSITIONS } from '@/lib/bookState'
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)) }
 
@@ -27,20 +28,40 @@ export async function processOutboxBatch(batchSize = 50) {
       }
 
       let recipients: { id: string; role: string }[] = []
-      if (type === 'BookSubmitted') {
-        recipients = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
-      } else if (type === 'BookMarkedReady' || type === 'BookReady') {
-        recipients = await prisma.user.findMany({ where: { role: 'Publisher' }, select: { id: true, role: true } })
-      } else if (type === 'BookPublished') {
-        recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
-      } else if (type === 'BookChangesRequested') {
-        recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
-      } else if (type === 'BookNotReady') {
-        recipients = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
+      // Prefer new path using payload.action + TRANSITIONS
+      const action: string | undefined = payload?.action
+      if (action && (action in TRANSITIONS)) {
+        const cfg = (TRANSITIONS as any)[action]
+        const targets = cfg.notify({ id: book.id, authorId: book.authorId }) as (string|'Editors'|'Publishers')[]
+        const ids: string[] = []
+        if (targets.includes('Editors')) {
+          const editors = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
+          recipients.push(...editors)
+        }
+        if (targets.includes('Publishers')) {
+          const pubs = await prisma.user.findMany({ where: { role: 'Publisher' }, select: { id: true, role: true } })
+          recipients.push(...pubs)
+        }
+        for (const t of targets) {
+          if (t !== 'Editors' && t !== 'Publishers') recipients.push({ id: t, role: '' })
+        }
       } else {
-        // ignore other event types for notifications
-        await prisma.bookEventOutbox.update({ where: { id: ev.id }, data: { processedAt: new Date() } })
-        continue
+        // Backward compatibility by event type
+        if (type === 'BookSubmitted') {
+          recipients = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
+        } else if (type === 'BookMarkedReady' || type === 'BookReady') {
+          recipients = await prisma.user.findMany({ where: { role: 'Publisher' }, select: { id: true, role: true } })
+        } else if (type === 'BookPublished') {
+          recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
+        } else if (type === 'BookChangesRequested') {
+          recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
+        } else if (type === 'BookNotReady') {
+          recipients = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
+        } else {
+          // ignore other event types for notifications
+          await prisma.bookEventOutbox.update({ where: { id: ev.id }, data: { processedAt: new Date() } })
+          continue
+        }
       }
 
       if (recipients.length > 0) {
