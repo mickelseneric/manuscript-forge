@@ -3,7 +3,7 @@ import { publishToRole, publishToUser } from '@/lib/sse'
 
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)) }
 
-async function processBatch(batchSize = 50) {
+export async function processOutboxBatch(batchSize = 50) {
   const events = await prisma.bookEventOutbox.findMany({
     where: { processedAt: null },
     orderBy: { occurredAt: 'asc' },
@@ -33,6 +33,10 @@ async function processBatch(batchSize = 50) {
         recipients = await prisma.user.findMany({ where: { role: 'Publisher' }, select: { id: true, role: true } })
       } else if (type === 'BookPublished') {
         recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
+      } else if (type === 'BookChangesRequested') {
+        recipients = await prisma.user.findMany({ where: { id: book.authorId }, select: { id: true, role: true } })
+      } else if (type === 'BookNotReady') {
+        recipients = await prisma.user.findMany({ where: { role: 'Editor' }, select: { id: true, role: true } })
       } else {
         // ignore other event types for notifications
         await prisma.bookEventOutbox.update({ where: { id: ev.id }, data: { processedAt: new Date() } })
@@ -49,8 +53,8 @@ async function processBatch(batchSize = 50) {
                 userId: r.id,
                 type,
                 bookId: book.id,
-                title: type === 'BookPublished' ? `Published: ${book.title}` : type === 'BookMarkedReady' || type === 'BookReady' ? `Ready: ${book.title}` : `Submitted: ${book.title}`,
-                body: type === 'BookPublished' ? 'Your book is now published.' : type === 'BookMarkedReady' || type === 'BookReady' ? 'A book is ready for publishing.' : 'A book was submitted for editing.',
+                title: type === 'BookPublished' ? `Published: ${book.title}` : type === 'BookMarkedReady' || type === 'BookReady' ? `Ready: ${book.title}` : type === 'BookChangesRequested' ? `Changes requested: ${book.title}` : `Submitted: ${book.title}`,
+                body: type === 'BookPublished' ? 'Your book is now published.' : type === 'BookMarkedReady' || type === 'BookReady' ? 'A book is ready for publishing.' : type === 'BookChangesRequested' ? 'Your draft was returned for changes by an editor.' : 'A book was submitted for editing.',
                 createdAt,
                 eventId,
               },
@@ -75,7 +79,7 @@ async function main() {
   console.log('[worker] Starting outbox worker…')
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    await processBatch(50)
+    await processOutboxBatch(50)
     await sleep(1000)
   }
 }

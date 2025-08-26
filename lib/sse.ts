@@ -52,33 +52,57 @@ export function publishToRole(role: string, event: string, data: any) {
 
 export function makeEventStream(): { response: Response; push: (event: string, data: any) => void; close: () => void } {
   const encoder = new TextEncoder()
-  const stream = new ReadableStream({
+
+  let ctrl: ReadableStreamDefaultController<Uint8Array> | null = null
+  let closed = false
+  let keepAlive: ReturnType<typeof setInterval> | null = null
+
+  const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      ctrl = controller
       // ping to keep alive
-      const interval = setInterval(() => {
-        controller.enqueue(encoder.encode(`: ping\n\n`))
+      keepAlive = setInterval(() => {
+        if (closed || !ctrl) return
+        try {
+          ctrl.enqueue(encoder.encode(`: ping\n\n`))
+        } catch {
+          // Controller likely closed; stop pings
+          if (keepAlive) clearInterval(keepAlive)
+          keepAlive = null
+        }
       }, 15000)
-      ;(controller as any)._ping = interval
     },
-    cancel(reason) {
-      const interval = (this as any)._ping
-      if (interval) clearInterval(interval)
+    cancel() {
+      closed = true
+      if (keepAlive) clearInterval(keepAlive)
+      keepAlive = null
     },
   })
-  const writer = (stream as any).writable?.getWriter?.() ?? null
 
   function push(event: string, data: any) {
+    if (closed || !ctrl) return
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
-    if ((writer && writer.write) as any) {
-      writer.write(encoder.encode(payload))
-    } else {
-      // Fallback for older Next runtimes: use controller via tees
-      // Not strictly necessary here.
+    try {
+      ctrl.enqueue(encoder.encode(payload))
+    } catch {
+      // Swallow if controller already closed
+      closed = true
+      if (keepAlive) clearInterval(keepAlive)
+      keepAlive = null
     }
   }
 
   function close() {
-    if (writer && writer.close) writer.close()
+    if (closed) return
+    closed = true
+    try {
+      ctrl?.close()
+    } catch {
+      // ignore
+    }
+    if (keepAlive) clearInterval(keepAlive)
+    keepAlive = null
+    ctrl = null
   }
 
   const response = new NextResponse(stream as any, {

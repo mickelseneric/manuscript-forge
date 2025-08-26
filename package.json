@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "worker": "tsx scripts/outbox-worker.ts",
+    "test": "vitest run",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -42,6 +43,7 @@
     "eslint-config-next": "15.5.0",
     "@eslint/eslintrc": "^3",
     "prisma": "^5.20.0",
-    "tsx": "^4.19.1"
+    "tsx": "^4.19.1",
+    "vitest": "^2.0.5"
   }
 }

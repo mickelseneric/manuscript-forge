@@ -1,9 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { Bell, Book, Home, LogOut, Moon, Sun } from "lucide-react"
-import { toggleTheme } from "./providers/theme-provider"
+import { usePathname } from "next/navigation"
+import { Bell, Book, Home, LogOut } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,9 +18,11 @@ export function AppShell({
   user: { id: string; name: string; email: string; role: string }
 }) {
   const pathname = usePathname()
-  const router = useRouter()
   const [openNotif, setOpenNotif] = useState(false)
   const qc = useQueryClient()
+
+  // This AppShell only renders on authenticated routes (middleware + requireUser),
+  // so we can safely enable notifications queries and SSE without checking cookies.
 
   // Data: unread count and latest notifications
   const unreadQuery = useQuery({
@@ -37,7 +38,7 @@ export function AppShell({
   const listQuery = useQuery({
     queryKey: ['notifications','list'],
     queryFn: async () => {
-      const r = await fetch('/api/notifications?limit=20')
+      const r = await fetch('/api/notifications?unread=true&limit=20')
       if (!r.ok) throw new Error('Failed')
       return r.json() as Promise<{ items: { id:string; title:string; body:string; bookId:string; createdAt:string; readAt:string|null }[] }>
     },
@@ -55,9 +56,17 @@ export function AppShell({
         qc.invalidateQueries({ queryKey: ['notifications','unread-count'] })
         qc.invalidateQueries({ queryKey: ['notifications','list'] })
       })
-      es.addEventListener('books.statusChanged', () => {
-        // Invalidate role queues in dashboard; kept generic (let dashboard handle specific query keys)
+      es.addEventListener('books.statusChanged', (e: MessageEvent) => {
+        // Invalidate specific queues based on payload
+        try {
+          const data = JSON.parse(e.data || '{}') as { from?: string; to?: string }
+          if (data?.from) qc.invalidateQueries({ queryKey: ['books', data.from] })
+          if (data?.to) qc.invalidateQueries({ queryKey: ['books', data.to] })
+        } catch {}
+        // Also invalidate generic and notifications (worker lag safe)
         qc.invalidateQueries({ queryKey: ['books'] })
+        qc.invalidateQueries({ queryKey: ['notifications','unread-count'] })
+        qc.invalidateQueries({ queryKey: ['notifications','list'] })
       })
       es.onerror = () => { es?.close() }
     } catch {
@@ -69,14 +78,14 @@ export function AppShell({
   async function markAllRead() {
     // Optimistic: set unread to 0 by updating cache
     const prev = unreadQuery.data
-    unreadQuery.setData?.({ count: 0 } as any)
+    qc.setQueryData(['notifications','unread-count'], { count: 0 })
     try {
       const r = await fetch('/api/notifications/read-all', { method: 'POST' })
       if (!r.ok) throw new Error('Failed')
       qc.invalidateQueries({ queryKey: ['notifications','list'] })
       qc.invalidateQueries({ queryKey: ['notifications','unread-count'] })
     } catch {
-      if (prev) unreadQuery.setData?.(prev as any)
+      if (prev) qc.setQueryData(['notifications','unread-count'], prev)
       toast.error('Failed to mark as read')
     }
   }
@@ -110,9 +119,6 @@ export function AppShell({
       <header className="col-span-2 md:col-span-1 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 backdrop-blur">
         <div className="md:hidden text-lg font-serif font-semibold">Manuscript Forge</div>
         <div className="flex items-center gap-2">
-          <Button aria-label="Toggle theme" variant="ghost" size="icon" onClick={() => toggleTheme()}>
-            <Sun className="h-4 w-4 block dark:hidden" /><Moon className="h-4 w-4 hidden dark:block" />
-          </Button>
 
           <div className="relative">
             <Button aria-label="Notifications" variant="ghost" size="icon" onClick={() => setOpenNotif((v) => !v)}>
@@ -124,7 +130,7 @@ export function AppShell({
               )}
             </Button>
             {openNotif && (
-              <div role="menu" aria-label="Notifications" className="absolute right-0 mt-2 w-80 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg z-50">
+              <div role="menu" aria-label="Notifications" className="absolute top-full md:right-0 md:left-auto left-2 mt-2 w-[min(20rem,calc(100vw-1rem))] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg z-50">
                 <div className="flex items-center justify-between p-2">
                   <div className="text-sm font-medium">Notifications</div>
                   <button className="text-xs underline" onClick={markAllRead}>Mark all read</button>

@@ -1,14 +1,23 @@
+import { headers } from "next/headers"
 import { notFound } from "next/navigation"
 
-async function getBook(id: string) {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/books/${id}`, { cache: 'no-store' })
+async function getBook(baseUrl: string, id: string) {
+  const res = await fetch(`${baseUrl}/api/books/${id}`, { cache: 'no-store' })
   if (res.status === 404) return null
   if (!res.ok) throw new Error('Failed')
   return res.json()
 }
 
-export default async function BookDetail({ params }: { params: { id: string } }) {
-  const book = await getBook(params.id)
+export default async function BookDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+
+  // Build absolute base URL from request headers
+  const h = await headers()
+  const proto = h.get('x-forwarded-proto') || 'http'
+  const host = h.get('x-forwarded-host') || h.get('host') || 'localhost:3000'
+  const baseUrl = `${proto}://${host}`
+
+  const book = await getBook(baseUrl, id)
   if (!book) return notFound()
 
   return (
