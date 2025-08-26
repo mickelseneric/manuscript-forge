@@ -9,7 +9,6 @@ export function BookCard({ title, author, status }: { title: string; author: str
           <div className="font-serif font-semibold leading-snug">{title}</div>
           <div className="text-xs text-neutral-500">by {author}</div>
         </div>
-        {status && <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">{status}</Badge>}
       </div>
     </div>
   )

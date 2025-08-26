@@ -44,9 +44,6 @@ export function Header() {
               ))}
             </div>
           )}
-          <Link className="ml-2" href="/auth/login?next=%2Fdashboard">
-            <Button>Get started</Button>
-          </Link>
         </div>
       </div>
       {mobileOpen && (

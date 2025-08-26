@@ -10,7 +10,7 @@ export function Hero() {
           <h1 className="text-4xl sm:text-5xl font-serif font-semibold tracking-tight">Publish better books, together.</h1>
           <p className="text-lg text-neutral-700 dark:text-neutral-300">Draft with clarity, collaborate with editors, and publish with confidence. Manuscript Forge brings your team into one elegant workflow.</p>
           <div className="flex flex-col sm:flex-row gap-3">
-            <Link href="/auth/login?next=%2Fdashboard"><Button className="bg-amber-500 hover:bg-amber-600 text-black">Get started</Button></Link>
+            <Link href="/auth/login"><Button className="bg-amber-500 hover:bg-amber-600 text-black">Get started</Button></Link>
             <Link href="/dashboard?tab=reader" className="text-sm underline underline-offset-4">Browse published books</Link>
           </div>
         </div>

@@ -8,6 +8,7 @@ export type FeaturedBook = { id: string; title: string; author: string; status?:
 export function BooksCarousel({ books }: { books: FeaturedBook[] }) {
   const trackRef = useRef<HTMLDivElement | null>(null)
   const [index, setIndex] = useState(0)
+  const mountedRef = useRef(false)
 
   const scrollTo = (i: number) => {
     const el = trackRef.current
@@ -19,6 +20,11 @@ export function BooksCarousel({ books }: { books: FeaturedBook[] }) {
   const prefersReduced = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   useEffect(() => {
+    // Skip the initial mount to avoid auto-scrolling the page to this section
+    if (!mountedRef.current) {
+      mountedRef.current = true
+      return
+    }
     scrollTo(index)
   }, [index])
 

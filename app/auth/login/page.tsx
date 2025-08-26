@@ -21,7 +21,7 @@ export default function LoginPage() {
     <div className="max-w-md mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold">Login</h1>
       <p className="text-sm text-neutral-600 dark:text-neutral-300">
-        Enter your username and password to sign in. Or use one of the demo users to auto-fill credentials.
+        Use one of the demo users to auto-fill credentials and sign in with the given role.
       </p>
       <form className="space-y-4" method="POST" action={`/api/auth/login?next=${encodeURIComponent(next)}`}>
         <label className="block">

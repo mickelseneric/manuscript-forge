@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Bell, Book, Home, LogOut } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -20,6 +20,7 @@ export function AppShell({
   const pathname = usePathname()
   const [openNotif, setOpenNotif] = useState(false)
   const qc = useQueryClient()
+  const notifRef = useRef<HTMLDivElement | null>(null)
 
   // This AppShell only renders on authenticated routes (middleware + requireUser),
   // so we can safely enable notifications queries and SSE without checking cookies.
@@ -75,7 +76,22 @@ export function AppShell({
     return () => es?.close()
   }, [qc])
 
+  // Close notifications when clicking outside the popup
+  useEffect(() => {
+    if (!openNotif) return
+    function onDocClick(e: MouseEvent) {
+      const el = notifRef.current
+      if (el && !el.contains(e.target as Node)) {
+        setOpenNotif(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [openNotif])
+
   async function markAllRead() {
+      // Close the popup immediately after clicking
+      setOpenNotif(false)
     // Optimistic: set unread to 0 by updating cache
     const prev = unreadQuery.data
     qc.setQueryData(['notifications','unread-count'], { count: 0 })
@@ -120,7 +136,7 @@ export function AppShell({
         <div className="md:hidden text-lg font-serif font-semibold">Manuscript Forge</div>
         <div className="flex items-center gap-2">
 
-          <div className="relative">
+          <div ref={notifRef} className="relative">
             <Button aria-label="Notifications" variant="ghost" size="icon" onClick={() => setOpenNotif((v) => !v)}>
               <Bell className="h-4 w-4" />
               {unread > 0 && (
@@ -130,7 +146,7 @@ export function AppShell({
               )}
             </Button>
             {openNotif && (
-              <div role="menu" aria-label="Notifications" className="absolute top-full md:right-0 md:left-auto left-2 mt-2 w-[min(20rem,calc(100vw-1rem))] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg z-50">
+              <div role="menu" aria-label="Notifications" className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-1rem))] rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg z-50">
                 <div className="flex items-center justify-between p-2">
                   <div className="text-sm font-medium">Notifications</div>
                   <button className="text-xs underline" onClick={markAllRead}>Mark all read</button>
