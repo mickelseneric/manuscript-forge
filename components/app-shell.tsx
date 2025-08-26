@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import toast, { Toaster } from "react-hot-toast"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import {hmrRefreshReducer} from "next/dist/client/components/router-reducer/reducers/hmr-refresh-reducer";
 
 export function AppShell({
   children,
@@ -115,25 +116,14 @@ export function AppShell({
   )
 
   return (
-    <div className="min-h-screen grid grid-cols-[240px_1fr] grid-rows-[56px_1fr] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
-      {/* Sidebar */}
-      <aside className="row-span-2 hidden md:block border-r border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 backdrop-blur">
-        <div className="px-4 py-4">
-          <div className="text-xl font-serif font-semibold">Manuscript Forge</div>
-        </div>
-        <nav className="px-2 space-y-1">
-          {nav.map((item) => (
-            <Link href={item.href} key={item.href} className={cn("flex items-center gap-2 px-3 py-2 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800", pathname === item.href && "bg-neutral-100 dark:bg-neutral-800")}> 
-              <item.icon className="h-4 w-4" aria-hidden />
-              <span>{item.label}</span>
-            </Link>
-          ))}
-        </nav>
-      </aside>
-
+    <div className="min-h-screen grid grid-cols-1 grid-rows-[56px_1fr] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       {/* Topbar */}
       <header className="col-span-2 md:col-span-1 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 backdrop-blur">
-        <div className="md:hidden text-lg font-serif font-semibold">Manuscript Forge</div>
+        <div className="px-4 py-4">
+          <Link href="/">
+            <div className="text-xl font-serif font-semibold">Manuscript Forge</div>
+          </Link>
+        </div>
         <div className="flex items-center gap-2">
 
           <div ref={notifRef} className="relative">

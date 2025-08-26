@@ -4,12 +4,31 @@ import { requireUser, assertRole } from '@/lib/api-auth'
 import { Prisma } from '@prisma/client'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const result = await requireUser()
-  if (!result.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { user } = result
   const id = params.id
 
-  // Visibility rules
+  // Public: return published book without requiring auth
+  const published = await prisma.book.findFirst({
+    where: { id, status: 'published' },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      status: true,
+      authorId: true,
+      editorId: true,
+      publisherId: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  })
+  if (published) return NextResponse.json(published)
+
+  // Otherwise, require auth and enforce role-based visibility
+  const result = await requireUser()
+  if (!result.ok) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const { user } = result
+
+  // Visibility rules for non-published content
   let where: Prisma.BookWhereInput
   switch (user.role) {
     case 'Author':
@@ -22,8 +41,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       where = { id, status: 'ready' }
       break
     case 'Reader':
-      where = { id, status: 'published' }
-      break
+      // Readers only see published; since not published here, treat as not found
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
     default:
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
