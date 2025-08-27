@@ -7,63 +7,66 @@ The entities and relations below reflect the current Prisma schema and app logic
 
 ```mermaid
 erDiagram
+  USER ||--o{ BOOK : "authorId (AuthorBooks)"
+  USER ||--o{ BOOK : "editorId (EditorBooks)"
+  USER ||--o{ BOOK : "publisherId (PublisherBooks)"
+  USER ||--o{ REVIEW : "readerId"
+  BOOK ||--o{ REVIEW : "bookId"
+  USER ||--o{ NOTIFICATION : "userId"
+  BOOK ||--o{ NOTIFICATION : "bookId"
+
   USER {
     string id PK
     string email
     string name
-    enum role "Author|Editor|Publisher|Reader"
+    enum   role "Author|Editor|Publisher|Reader"
   }
 
   BOOK {
-    string id PK
-    string authorId FK
-    string title
-    text content
-    enum status "draft|editing|ready|published"
-    string editorId FK nullable
-    string publisherId FK nullable
+    string   id PK
+    string   authorId FK
+    string   title
+    text     content
+    enum     status "draft|editing|ready|published"
+    string   editorId FK?      // nullable
+    string   publisherId FK?   // nullable
     datetime createdAt
     datetime updatedAt
   }
 
   REVIEW {
-    string id PK
-    string bookId FK
-    string readerId FK
-    int rating "1..5"
-    text body
+    string   id PK
+    string   bookId FK
+    string   readerId FK
+    int      rating "1..5"
+    text     body
     datetime createdAt
-    unique bookId_readerId
+    UNIQUE (bookId, readerId)
   }
 
   NOTIFICATION {
-    string id PK
-    string userId FK
-    string bookId FK
-    string type
-    string eventId "idempotency"
-    string title
-    text body
+    string   id PK
+    string   userId FK
+    string   bookId FK
+    string   type     // e.g., BookSubmitted|BookReady|BookPublished...
+    string   title
+    text     body
     datetime createdAt
-    datetime seenAt nullable
-    datetime readAt nullable
-    unique userId_eventId
+    datetime seenAt?
+    datetime readAt?
+    string   eventId  // idempotency key
+    UNIQUE (userId, eventId)
+    INDEX(userId, readAt, createdAt)
   }
 
+  %% Note: Outbox has no bookId FK; bookId is carried in payload if needed
   BOOK_EVENT_OUTBOX {
-    string id PK
-    string type
-    json payload
+    string   id PK
+    string   type      // domain event name
+    json     payload
     datetime occurredAt
-    datetime processedAt nullable
+    datetime processedAt?
   }
-
-  USER ||--o{ BOOK : "authorId"
-  USER ||--o{ REVIEW : "readerId"
-  BOOK ||--o{ REVIEW : "bookId"
-  BOOK ||--o{ NOTIFICATION : "bookId"
-  USER ||--o{ NOTIFICATION : "userId"
-  %% Outbox rows reference the bookId inside payload (not a DB FK)
 ```
 
 Note: The outbox does not store a `bookId` FK column; the book id is carried inside `payload`. Notifications use `readAt`/`seenAt` timestamps (no boolean `read`).
