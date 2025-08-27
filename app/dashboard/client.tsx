@@ -9,17 +9,7 @@ import { Label } from "@/components/ui/label"
 import toast from "react-hot-toast"
 import { useTransitionBook } from "@/components/hooks/use-transition-book"
 
-function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  return fetch(url, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers || {}) } }).then(async (r) => {
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}))
-      const err: any = new Error(data?.error || r.statusText)
-      err.status = r.status
-      throw err
-    }
-    return r.json()
-  })
-}
+import { fetchJSON } from '@/lib/fetch'
 
 function useBooks(status?: string) {
   return useQuery({

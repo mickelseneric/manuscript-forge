@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireUser, assertRole } from '@/lib/api-auth'
 import { Prisma } from '@prisma/client'
+import { z } from 'zod'
+
+const updateBookSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'No fields to update' })
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const id = params.id
@@ -74,15 +80,15 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const id = params.id
   const body = await req.json().catch(() => null)
-  const title = body?.title
-  const content = body?.content
-  if ((!title && !content) || (title && typeof title !== 'string') || (content && typeof content !== 'string')) {
-    return NextResponse.json({ error: 'title and/or content required' }, { status: 400 })
+  const parse = updateBookSchema.safeParse(body)
+  if (!parse.success) {
+    return NextResponse.json({ error: parse.error.flatten() }, { status: 400 })
   }
+  const data = parse.data
 
   const updateData: Prisma.BookUpdateManyMutationInput = {}
-  if (title) (updateData.title = title)
-  if (content) (updateData.content = content)
+  if (typeof data.title === 'string') updateData.title = data.title
+  if (typeof data.content === 'string') updateData.content = data.content
 
   // Atomic conditional update: only author's own draft
   const res = await prisma.book.updateMany({

@@ -8,16 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import toast, { Toaster } from 'react-hot-toast'
 
-async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers || {}) }, credentials: 'include' })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({} as unknown as { error?: string }))
-    const err = new Error((data as { error?: string })?.error || r.statusText) as Error & { status?: number }
-    err.status = r.status
-    throw err
-  }
-  return r.json()
-}
+import { fetchJSON } from '@/lib/fetch'
 
 export function ReviewsClient({ bookId }: { bookId: string }) {
   const qc = useQueryClient()

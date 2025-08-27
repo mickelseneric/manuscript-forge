@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { Bell, Book, Home, LogOut } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -9,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import toast, { Toaster } from "react-hot-toast"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {hmrRefreshReducer} from "next/dist/client/components/router-reducer/reducers/hmr-refresh-reducer";
 
 export function AppShell({
   children,
@@ -18,7 +16,6 @@ export function AppShell({
   children: React.ReactNode
   user: { id: string; name: string; email: string; role: string }
 }) {
-  const pathname = usePathname()
   const [openNotif, setOpenNotif] = useState(false)
   const qc = useQueryClient()
   const notifRef = useRef<HTMLDivElement | null>(null)

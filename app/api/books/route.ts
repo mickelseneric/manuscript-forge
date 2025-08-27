@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { requireUser, assertRole } from '@/lib/api-auth'
 import { Prisma } from '@prisma/client'
+import { z } from 'zod'
+
+const createBookSchema = z.object({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1),
+})
 
 function parseStatus(param?: string | null): 'draft' | 'editing' | 'ready' | 'published' | undefined {
   if (!param) return undefined
@@ -60,11 +66,11 @@ export async function POST(req: NextRequest) {
   if (!assertRole(user, 'Author').ok) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json().catch(() => null)
-  const title = body?.title
-  const content = body?.content
-  if (!title || !content || typeof title !== 'string' || typeof content !== 'string') {
-    return NextResponse.json({ error: 'title and content are required' }, { status: 400 })
+  const parse = createBookSchema.safeParse(body)
+  if (!parse.success) {
+    return NextResponse.json({ error: parse.error.flatten() }, { status: 400 })
   }
+  const { title, content } = parse.data
 
   const book = await prisma.book.create({
     data: {

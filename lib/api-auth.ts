@@ -25,6 +25,28 @@ export async function requireUser(): Promise<RequireUserResult> {
   }
 }
 
+export async function optionalUser(): Promise<
+    | { ok: false }
+    | { ok: true; user: { id: string; email: string; name: string | null; role: string } }
+> {
+    const cookieStore = await cookies()
+    const token = cookieStore.get(cookieName)?.value
+    if (!token) return { ok: false }
+    try {
+        const payload = await verifyToken(token)
+        const userId = payload.sub
+        if (!userId) return { ok: false }
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true, name: true, role: true },
+        })
+        if (!user) return { ok: false }
+        return { ok: true, user: { ...user, role: String(user.role) } }
+    } catch {
+        return { ok: false }
+    }
+}
+
 export function assertRole(user: { role: string }, roles: string[] | string): { ok: true } | { ok: false; status: 403 } {
   const allowed = Array.isArray(roles) ? roles : [roles]
   if (allowed.includes(user.role)) return { ok: true }
