@@ -66,6 +66,7 @@ async function main() {
     const publishedBooks = createdBooks.filter((b) => b.status === BookStatus.published)
 
     for (const book of publishedBooks) {
+      // Create a single review per reader per book to respect unique(bookId, readerId)
       await prisma.review.create({
         data: {
           book: { connect: { id: book.id } },
@@ -74,18 +75,9 @@ async function main() {
           body: `An excellent read: ${book.title}`,
         },
       })
-
-      await prisma.review.create({
-        data: {
-          book: { connect: { id: book.id } },
-          reader: { connect: { id: reader.id } },
-          rating: 4,
-          body: `Enjoyed the narrative arc in ${book.title}.`,
-        },
-      })
     }
 
-    console.log(`Created ${createdBooks.length} books and ${publishedBooks.length * 2} reviews.`)
+    console.log(`Created ${createdBooks.length} books and ${publishedBooks.length} reviews.`)
   } else {
     console.log('Books already exist. Skipping book and review creation to keep seed idempotent.')
   }

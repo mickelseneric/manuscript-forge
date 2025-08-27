@@ -75,6 +75,7 @@ model Review {
   reader User @relation(fields: [readerId], references: [id], onDelete: Cascade)
 
   @@index([bookId, createdAt])
+  @@unique([bookId, readerId])
 }
 
 model Notification {

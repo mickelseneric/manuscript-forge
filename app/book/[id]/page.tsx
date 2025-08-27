@@ -1,5 +1,6 @@
 import { headers } from "next/headers"
 import { notFound } from "next/navigation"
+import { ReviewsClient as ReviewsSection } from './reviews-client'
 
 async function getBook(baseUrl: string, id: string) {
   const res = await fetch(`${baseUrl}/api/books/${id}`, { cache: 'no-store' })
@@ -30,7 +31,9 @@ export default async function BookDetail({ params }: { params: Promise<{ id: str
 
       <div className="mt-6">
         <div className="text-xl font-semibold mb-2">Reviews</div>
-        <div className="text-sm text-neutral-500">Reviews UI coming soon. Submitting reviews is not yet implemented on the API.</div>
+        {/* Reviews list and form */}
+        {/* @ts-expect-error Async Server Component boundary wraps client */}
+        <ReviewsSection bookId={book.id} />
       </div>
     </div>
   )
